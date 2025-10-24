@@ -1,4 +1,3 @@
-# discord_multibot.py
 import os
 import asyncio
 import io
@@ -13,7 +12,9 @@ import requests
 import yt_dlp
 from gtts import gTTS
 
-# Configuración desde variables de entorno
+# =========================
+# 🔐 Configuración (Tokens)
+# =========================
 DISCORD_TOKEN = os.environ.get("DISCORD_TOKEN")
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
 DEEPSEEK_API_URL = os.environ.get("DEEPSEEK_API_URL", "https://api.deepseek.com/v1/chat/completions")
@@ -21,17 +22,17 @@ ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY")
 
 BOT_PREFIX = "!"
 MAX_QUEUE_LENGTH = 50
-TTS_LANGUAGE = "es"  # idioma de respaldo (gTTS)
+TTS_LANGUAGE = "es"
 
-# ----------------------------
-# Logging
-# ----------------------------
+# =========================
+# 🧠 Logging
+# =========================
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("discord_multibot")
 
-# ----------------------------
-# Discord intents & bot init
-# ----------------------------
+# =========================
+# ⚙️ Intents y Bot
+# =========================
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
@@ -39,9 +40,9 @@ intents.voice_states = True
 
 bot = commands.Bot(command_prefix=BOT_PREFIX, intents=intents)
 
-# ----------------------------
-# Models / Data structures
-# ----------------------------
+# =========================
+# 🎵 Estructuras de datos
+# =========================
 @dataclass
 class Song:
     url: str
@@ -75,9 +76,9 @@ class MusicQueue:
 music_queues: Dict[int, MusicQueue] = {}
 conversation_history: Dict[str, List[dict]] = {}
 
-# ----------------------------
-# Utility - YouTube extraction
-# ----------------------------
+# =========================
+# 🔍 YouTube (yt_dlp)
+# =========================
 YTDL_OPTS = {
     'format': 'bestaudio/best',
     'noplaylist': False,
@@ -87,8 +88,6 @@ YTDL_OPTS = {
     'extract_flat': 'in_playlist',
     'skip_download': True,
 }
-
-yt_dlp_instance = yt_dlp.YoutubeDL(YTDL_OPTS)
 
 async def extract_info(search_or_url: str):
     loop = asyncio.get_event_loop()
@@ -106,20 +105,13 @@ async def build_ffmpeg_source(video_url: str):
     def _direct_audio():
         with yt_dlp.YoutubeDL({'format': 'bestaudio/best', 'quiet': True}) as ydl:
             info = ydl.extract_info(video_url, download=False)
-            if 'url' in info and not info.get('is_live'):
-                return info['url']
-            formats = info.get('formats', [])
-            if formats:
-                for f in reversed(formats):
-                    if f.get('vcodec') == 'none' or f.get('acodec'):
-                        return f.get('url')
             return info.get('url')
     direct_url = await loop.run_in_executor(None, _direct_audio)
     return discord.FFmpegOpusAudio(direct_url, before_options=before_options)
 
-# ----------------------------
-# Utility - DeepSeek (IA)
-# ----------------------------
+# =========================
+# 🤖 DeepSeek API (IA)
+# =========================
 def add_to_history(context_key: str, role: str, content: str, max_len: int = 10):
     history = conversation_history.setdefault(context_key, [])
     history.append({'role': role, 'content': content})
@@ -149,25 +141,19 @@ def deepseek_chat_response(context_key: str, user_prompt: str, model: str = "gpt
         log.exception("Error llamando a DeepSeek")
         return "Lo siento, ocurrió un error al solicitar la IA."
 
-# ----------------------------
-# TTS & playback helpers
-# ----------------------------
+# =========================
+# 🔊 TTS (voz)
+# =========================
 async def speak_text_in_voice(vc: discord.VoiceClient, text: str):
-    """
-    Usa ElevenLabs TTS (voz realista). Si falla, usa gTTS como respaldo.
-    """
     if not vc or not vc.is_connected():
         return
     loop = asyncio.get_event_loop()
 
-    def _generate_elevenlabs():
+    def _generate_audio():
         try:
-            voice_id = "pNInz6obpgDQGcFmaJgB"  # Voz por defecto (puedes cambiarla)
+            voice_id = "pNInz6obpgDQGcFmaJgB"
             url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
-            headers = {
-                "xi-api-key": ELEVENLABS_API_KEY,
-                "Content-Type": "application/json"
-            }
+            headers = {"xi-api-key": ELEVENLABS_API_KEY, "Content-Type": "application/json"}
             payload = {
                 "text": text,
                 "model_id": "eleven_multilingual_v2",
@@ -177,16 +163,14 @@ async def speak_text_in_voice(vc: discord.VoiceClient, text: str):
             if response.status_code != 200:
                 raise RuntimeError("Error en ElevenLabs")
             return io.BytesIO(response.content)
-        except Exception as e:
-            log.warning(f"Fallo ElevenLabs: {e}, usando gTTS")
+        except Exception:
             tts = gTTS(text, lang=TTS_LANGUAGE)
             buf = io.BytesIO()
             tts.write_to_fp(buf)
             buf.seek(0)
             return buf
 
-    audio_buf = await loop.run_in_executor(None, _generate_elevenlabs)
-
+    audio_buf = await loop.run_in_executor(None, _generate_audio)
     temp_path = f"tts_{vc.guild.id}.mp3"
     with open(temp_path, "wb") as f:
         f.write(audio_buf.read())
@@ -197,16 +181,14 @@ async def speak_text_in_voice(vc: discord.VoiceClient, text: str):
             os.remove(temp_path)
         except Exception:
             pass
-        if err:
-            log.error(f"Error reproduciendo TTS: {err}")
 
     vc.play(source, after=_after_play)
     while vc.is_playing():
         await asyncio.sleep(0.1)
 
-# ----------------------------
-# Music playback flow
-# ----------------------------
+# =========================
+# 🎶 Reproducción de música
+# =========================
 async def ensure_queue_for_guild(guild_id: int) -> MusicQueue:
     if guild_id not in music_queues:
         music_queues[guild_id] = MusicQueue(limit=MAX_QUEUE_LENGTH)
@@ -227,22 +209,19 @@ async def start_playback_if_needed(guild: discord.Guild):
         try:
             source = await build_ffmpeg_source(song.url)
             def _after_play(err):
-                if err:
-                    log.error(f"Playback error: {err}")
                 coro = start_playback_if_needed(guild)
                 asyncio.run_coroutine_threadsafe(coro, bot.loop)
             vc.play(source, after=_after_play)
-            asyncio.create_task(song.channel.send(f"🎵 Reproduciendo ahora: **{song.title}** (pedido por {song.requester_name})"))
+            await song.channel.send(f"🎵 Reproduciendo ahora: **{song.title}** (pedido por {song.requester_name})")
         except Exception:
-            log.exception("Error iniciando reproducción")
-            asyncio.create_task(song.channel.send("Error al preparar el audio. Saltando..." ))
+            await song.channel.send("Error al preparar el audio. Saltando...")
 
-# ----------------------------
-# Bot events & commands
-# ----------------------------
+# =========================
+# ⚡ Eventos del bot
+# =========================
 @bot.event
 async def on_ready():
-    log.info(f"Bot conectado como {bot.user}")
+    log.info(f"✅ Bot conectado como {bot.user}")
 
 @bot.event
 async def on_message(message: discord.Message):
@@ -256,19 +235,17 @@ async def on_message(message: discord.Message):
             await message.channel.trigger_typing()
             response = await asyncio.get_event_loop().run_in_executor(None, deepseek_chat_response, f"chan_{message.channel.id}", prompt)
             await message.channel.send(response)
-            # Si está en canal de voz, también habla
             if message.guild.voice_client:
                 await speak_text_in_voice(message.guild.voice_client, response)
     await bot.process_commands(message)
 
-# ---- Comandos ----
+# =========================
+# 🧩 Comandos
+# =========================
 @bot.command(name="join")
 async def cmd_join(ctx):
     if ctx.author.voice and ctx.author.voice.channel:
         channel = ctx.author.voice.channel
-        if ctx.voice_client and ctx.voice_client.channel.id == channel.id:
-            await ctx.send("Ya estoy en tu canal.")
-            return
         await channel.connect()
         await ctx.send(f"Conectado a {channel.name}")
     else:
@@ -349,7 +326,7 @@ async def cmd_stop(ctx):
     else:
         await ctx.send("No estoy en canal de voz.")
 
-# ----------------------------
-# Run bot
-# ----------------------------
+# =========================
+# 🚀 Ejecutar bot
+# =========================
 bot.run(DISCORD_TOKEN)
