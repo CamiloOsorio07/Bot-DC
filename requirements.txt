@@ -1,4 +1,5 @@
 discord.py
+PyNaCl==1.5.0
 yt-dlp
 gtts
 flask
