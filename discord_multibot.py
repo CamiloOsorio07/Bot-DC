@@ -83,7 +83,7 @@ conversation_history: Dict[str, List[dict]] = {}
 if os.getenv("YOUTUBE_COOKIES"):
     with open("cookies.txt", "w", encoding="utf-8") as f:
         f.write(os.getenv("YOUTUBE_COOKIES"))
-        
+
 YTDL_OPTS = {
     'format': 'bestaudio/best',
     'noplaylist': False,
@@ -92,7 +92,7 @@ YTDL_OPTS = {
     'default_search': 'ytsearch',
     'extract_flat': 'in_playlist',
     'skip_download': True,
-    'cookiefile': os.path.join(os.getcwd(), 'cookies.txt'),
+    'cookiefile': 'cookies.txt'
 }
 
 async def extract_info(search_or_url: str):
