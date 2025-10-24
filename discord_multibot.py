@@ -87,7 +87,7 @@ YTDL_OPTS = {
     'default_search': 'ytsearch',
     'extract_flat': 'in_playlist',
     'skip_download': True,
-    'cookiefile': 'cookies.txt',
+    'cookiefile': os.path.join(os.getcwd(), 'cookies.txt'),
 }
 
 async def extract_info(search_or_url: str):
