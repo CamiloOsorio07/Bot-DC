@@ -79,6 +79,11 @@ conversation_history: Dict[str, List[dict]] = {}
 # =========================
 # 🔍 YouTube (yt_dlp)
 # =========================
+# Crear el archivo cookies.txt en tiempo de ejecución (Railway lo genera temporalmente)
+if os.getenv("YOUTUBE_COOKIES"):
+    with open("cookies.txt", "w", encoding="utf-8") as f:
+        f.write(os.getenv("YOUTUBE_COOKIES"))
+        
 YTDL_OPTS = {
     'format': 'bestaudio/best',
     'noplaylist': False,
